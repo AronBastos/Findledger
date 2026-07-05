@@ -1,0 +1,2 @@
+- [FinLedger Project Overview](project_finledger_overview.md) — Purpose, full tech stack, architecture summary, and why it was built
+- [Key File Locations](project_key_files.md) — Critical file paths for entry points, domain, infra, frontend, tests, and infra config

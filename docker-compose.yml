@@ -1,0 +1,62 @@
+services:
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: finledger-api
+    ports:
+      - "5000:8080"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ConnectionStrings__Default: >
+        Host=db;Port=5432;Database=finledger;Username=finledger;
+        Password=${DB_PASSWORD:-finledger123};
+        Pooling=true;Minimum Pool Size=1;Maximum Pool Size=20
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: finledger-frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - api
+    restart: unless-stopped
+
+  db:
+    image: postgres:16-alpine
+    container_name: finledger-db
+    environment:
+      POSTGRES_USER: finledger
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-finledger123}
+      POSTGRES_DB: finledger
+    ports:
+      - "5432:5432"
+    volumes:
+      - finledger-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U finledger -d finledger"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    restart: unless-stopped
+
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: finledger-pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@finledger.dev
+      PGADMIN_DEFAULT_PASSWORD: ${DB_PASSWORD:-finledger123}
+    ports:
+      - "5050:80"
+    depends_on:
+      - db
+    restart: unless-stopped
+
+volumes:
+  finledger-db-data:
