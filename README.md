@@ -1,5 +1,10 @@
 # FinLedger
 
+[![CI](https://github.com/AronBastos/Findledger/actions/workflows/ci.yml/badge.svg)](https://github.com/AronBastos/Findledger/actions/workflows/ci.yml)
+![.NET](https://img.shields.io/badge/.NET-9-512BD4?logo=dotnet&logoColor=white)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169E1?logo=postgresql&logoColor=white)
+![License](https://img.shields.io/badge/license-MIT-blue)
+
 > API de ledger financeiro demonstrando padrões de banco de dados usados em empresas reais.  
 > **C# .NET 9** · **TypeScript React** · **PostgreSQL 16** · **Clean Architecture** · **CQRS**
 
@@ -9,9 +14,9 @@ A maioria dos projetos de portfólio demonstra CRUD básico. **FinLedger demonst
 
 ## Padrões de banco de dados implementados
 
-| # | Padrão | Arquivo | O que ensina |
+| # | Padrão | Arquivo | O que demonstra |
 |---|--------|---------|-------------|
-| 1 | **Migrations** | `Infrastructure/Migrations/` | Schema como código, versionado e reproduzível |
+| 1 | **Migrations** | `Infrastructure/Persistence/Migrations/` | Schema como código, versionado e reproduzível |
 | 2 | **Transação ACID** | `TransferCommandHandler.cs` | Atomicidade entre duas contas |
 | 3 | **Concorrência otimista (xmin)** | `AccountConfiguration.cs` | Previne double-spend sem lock em leitura |
 | 4 | **SELECT FOR UPDATE** | `AccountRepository.cs` | Lock pessimista para transferências |
@@ -28,9 +33,8 @@ A maioria dos projetos de portfólio demonstra CRUD básico. **FinLedger demonst
 Cada padrão tem um comentário explicativo no próprio arquivo apontando **por quê** ele existe.  
 Para a versão aprofundada: [docs/database-patterns.md](docs/database-patterns.md)
 
-Estudando lógica de programação, C# ou estrutura de dados? Veja o
-[docs/guia-de-estudos.md](docs/guia-de-estudos.md) — mapeia cada conceito para o código exato
-deste projeto, com exercícios práticos.
+Material complementar: [docs/arquitetura.md](docs/arquitetura.md) e, para quem está aprendendo C#,
+o [guia de estudos](docs/guia-de-estudos.md), que mapeia conceitos para o código deste projeto.
 
 ---
 
@@ -99,8 +103,8 @@ Audit interceptor          Sem overhead de ORM
 ### Opção 1 — Docker Compose (recomendado)
 
 ```bash
-git clone https://github.com/seu-usuario/finledger
-cd finledger
+git clone https://github.com/AronBastos/Findledger
+cd Findledger
 docker compose up -d --build
 ```
 
@@ -212,4 +216,31 @@ dotnet test backend/
 
 ---
 
-*Construído como projeto de portfólio para demonstrar padrões de banco de dados em nível pleno.*
+Os testes de integração precisam do **Docker** rodando (o Testcontainers sobe o PostgreSQL). O CI executa a suíte completa a cada push.
+
+---
+
+## Dados de demonstração (opcional)
+
+Com a stack no ar (`docker compose up -d`) e a API já tendo aplicado as migrations:
+
+```bash
+docker compose exec -T db psql -U finledger -d finledger < database/seeds/001_seed_demo.sql
+```
+
+---
+
+## Limitações conhecidas
+
+Projeto de estudo e portfólio, não um sistema pronto para produção:
+
+- **Sem autenticação/autorização** — o `ownerName` é só um filtro; qualquer cliente acessa qualquer conta.
+- **CORS aberto** (`AllowAnyOrigin`) e credenciais de desenvolvimento no `docker-compose.yml`/pgAdmin. Troque antes de expor em rede.
+- **Migrations aplicadas no startup da API** por conveniência; em produção, rode-as num job separado.
+- **Sem idempotência** nos endpoints de transação (um retry do cliente duplica a operação).
+
+Esses itens estão listados de propósito: são os próximos passos naturais e as primeiras perguntas que um ledger real exige.
+
+## Licença
+
+[MIT](LICENSE)

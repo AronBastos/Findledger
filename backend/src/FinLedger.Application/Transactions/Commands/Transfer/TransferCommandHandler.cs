@@ -57,44 +57,46 @@ public sealed class TransferCommandHandler : IRequestHandler<TransferCommand, Tr
             : (request.DestinationAccountId, request.SourceAccountId);
 
         // STEP 2: Transação explícita de banco.
-        // O 'await using' garante ROLLBACK automático se sairmos por exceção.
-        await using var dbTransaction = await _uow.BeginTransactionAsync(ct);
+        // Se qualquer passo lançar exceção, a transação sofre ROLLBACK automaticamente.
+        // Em falha transitória, o bloco inteiro é repetido do zero (execution strategy).
+        return await _uow.ExecuteInTransactionAsync(async innerCt =>
+        {
+            // STEP 3: SELECT FOR UPDATE — lock pessimista nas duas linhas.
+            var first = await _accounts.GetByIdForUpdateAsync(firstId, innerCt)
+                ?? throw new AccountNotFoundException(firstId);
+            var second = await _accounts.GetByIdForUpdateAsync(secondId, innerCt)
+                ?? throw new AccountNotFoundException(secondId);
 
-        // STEP 3: SELECT FOR UPDATE — lock pessimista nas duas linhas.
-        var first = await _accounts.GetByIdForUpdateAsync(firstId, ct)
-            ?? throw new AccountNotFoundException(firstId);
-        var second = await _accounts.GetByIdForUpdateAsync(secondId, ct)
-            ?? throw new AccountNotFoundException(secondId);
+            var (source, destination) = firstId == request.SourceAccountId
+                ? (first, second)
+                : (second, first);
 
-        var (source, destination) = firstId == request.SourceAccountId
-            ? (first, second)
-            : (second, first);
+            // STEP 4: Lógica de negócio no domínio.
+            // Debit lança InsufficientFundsException se saldo < amount.
+            source.Debit(request.Amount);
+            destination.Credit(request.Amount);
 
-        // STEP 4: Lógica de negócio no domínio.
-        // Debit lança InsufficientFundsException se saldo < amount.
-        source.Debit(request.Amount);
-        destination.Credit(request.Amount);
+            // STEP 5: Dois registros de transação vinculados pelo CounterpartyAccountId.
+            var debitTx = Transaction.Create(
+                source.Id, TransactionType.TransferDebit,
+                request.Amount,
+                request.Description ?? $"Transfer to {destination.Name}",
+                counterpartyAccountId: destination.Id);
 
-        // STEP 5: Dois registros de transação vinculados pelo CounterpartyAccountId.
-        var debitTx = Transaction.Create(
-            source.Id, TransactionType.TransferDebit,
-            request.Amount,
-            request.Description ?? $"Transfer to {destination.Name}",
-            counterpartyAccountId: destination.Id);
+            var creditTx = Transaction.Create(
+                destination.Id, TransactionType.TransferCredit,
+                request.Amount,
+                request.Description ?? $"Transfer from {source.Name}",
+                counterpartyAccountId: source.Id);
 
-        var creditTx = Transaction.Create(
-            destination.Id, TransactionType.TransferCredit,
-            request.Amount,
-            request.Description ?? $"Transfer from {source.Name}",
-            counterpartyAccountId: source.Id);
+            await _transactions.AddRangeAsync([debitTx, creditTx], innerCt);
 
-        await _transactions.AddRangeAsync([debitTx, creditTx], ct);
+            // STEP 6: CommitAsync envia todos os UPDATEs e INSERTs em batch e faz o COMMIT.
+            // O AuditInterceptor adiciona audit_logs na mesma transação.
+            // ConcurrencyConflictException é relançada pelo UnitOfWork se xmin mudou.
+            await _uow.CommitAsync(innerCt);
 
-        // STEP 6: CommitAsync envia todos os UPDATEs e INSERTs em batch.
-        // O AuditInterceptor adiciona audit_logs na mesma transação.
-        // ConcurrencyConflictException é relançada pelo UnitOfWork se xmin mudou.
-        await _uow.CommitAsync(ct);
-
-        return new TransferResult(debitTx.Id, creditTx.Id);
+            return new TransferResult(debitTx.Id, creditTx.Id);
+        }, ct);
     }
 }

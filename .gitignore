@@ -29,3 +29,6 @@ Thumbs.db
 
 # Internal notes (not part of public repo)
 docs/git-workflow.md
+
+# Ferramentas locais de IA/agentes
+.claude/
