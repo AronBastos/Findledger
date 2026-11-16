@@ -17,10 +17,11 @@ public sealed class AccountRepository : IAccountRepository
     // Quando a query retorna, a linha no banco fica bloqueada até o fim da transação.
     // Nenhuma outra transação pode ler (com FOR UPDATE) ou modificar essa linha.
     // Usado no TransferCommandHandler para prevenir condições de corrida.
-    // Nota: requer uma transação explícita ativa (BeginTransactionAsync).
+    // Nota: requer uma transação explícita ativa (IUnitOfWork.ExecuteInTransactionAsync).
+    // Nota 2: "SELECT *" NÃO inclui colunas de sistema; xmin (token de concorrência) precisa ser pedido explicitamente.
     public Task<Account?> GetByIdForUpdateAsync(Guid id, CancellationToken ct = default)
         => _context.Accounts
-            .FromSqlRaw("SELECT * FROM accounts WHERE id = {0} AND deleted_at IS NULL FOR UPDATE", id)
+            .FromSqlRaw("SELECT *, xmin FROM accounts WHERE id = {0} AND deleted_at IS NULL FOR UPDATE", id)
             .FirstOrDefaultAsync(ct);
 
     public async Task<IReadOnlyList<Account>> GetAllByOwnerAsync(

@@ -77,7 +77,7 @@ public sealed class StatementRepository : IStatementRepository
             new { AccountId = accountId, PageSize = pageSize, Offset = offset });
 
         var list = rows.ToList();
-        var totalCount = list.FirstOrDefault()?.TotalCount ?? 0;
+        var totalCount = (int)(list.FirstOrDefault()?.TotalCount ?? 0);
 
         return new PagedResult<StatementLineDto>(
             list.Select(r => new StatementLineDto(
@@ -99,5 +99,5 @@ public sealed class StatementRepository : IStatementRepository
         decimal RunningBalance,
         string? Description,
         DateTime CreatedAt,
-        int TotalCount);
+        long TotalCount);
 }

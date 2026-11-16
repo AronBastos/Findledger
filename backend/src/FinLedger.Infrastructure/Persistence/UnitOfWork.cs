@@ -12,10 +12,32 @@ public sealed class UnitOfWork : IUnitOfWork
 
     public UnitOfWork(FinLedgerDbContext context) => _context = context;
 
-    public async Task<IAsyncDisposable> BeginTransactionAsync(CancellationToken ct = default)
+    // PATTERN: Transação explícita + Execution Strategy
+    // Com EnableRetryOnFailure ativo, o EF Core proíbe BeginTransaction "solto": a transação
+    // precisa estar dentro de strategy.ExecuteAsync, que repete o bloco inteiro numa falha
+    // transitória. O ChangeTracker é limpo a cada tentativa para não carregar estado antigo.
+    public Task<T> ExecuteInTransactionAsync<T>(
+        Func<CancellationToken, Task<T>> operation,
+        CancellationToken ct = default)
     {
-        _currentTransaction = await _context.Database.BeginTransactionAsync(ct);
-        return _currentTransaction;
+        var strategy = _context.Database.CreateExecutionStrategy();
+
+        return strategy.ExecuteAsync(async () =>
+        {
+            _context.ChangeTracker.Clear();
+
+            await using var transaction = await _context.Database.BeginTransactionAsync(ct);
+            _currentTransaction = transaction;
+            try
+            {
+                // Sair por exceção (sem CommitAsync) → DisposeAsync da transação faz ROLLBACK.
+                return await operation(ct);
+            }
+            finally
+            {
+                _currentTransaction = null;
+            }
+        });
     }
 
     public async Task<int> CommitAsync(CancellationToken ct = default)
@@ -25,10 +47,7 @@ public sealed class UnitOfWork : IUnitOfWork
             var result = await _context.SaveChangesAsync(ct);
 
             if (_currentTransaction is not null)
-            {
                 await _currentTransaction.CommitAsync(ct);
-                _currentTransaction = null;
-            }
 
             return result;
         }
